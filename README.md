@@ -26,12 +26,7 @@
 <p>Объявление аллокатора имеет следующий вид</p>
 
 ```cplusplus
-template <typename Type,
-		size_t Count = default_memory_size,
-		typename MemoryType = MemoryLinear, loc_t Loc = HEAP
-	> class Allocator
-// Type       - тип аллоцируемых объектов
-// Count      - общий доступны размер памяти в байтах
-// MemoryType - один из MemoryLinear, MemoryStack, MemoryPool (понятно что для какого аллокатора указать)
-// Loc        - может быть STACK или HEAP, т.е. память аллоцируется на стеке или в куче 
+class Allocator
+{
+}
 ```
