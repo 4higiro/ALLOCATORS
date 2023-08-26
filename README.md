@@ -26,7 +26,7 @@
 <p>Объявление аллокатора имеет следующий вид</p>
 
 ```cplusplus
-class Allocator
+void f()
 {
 }
 ```
