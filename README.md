@@ -37,6 +37,7 @@ template <typename Type,
 ```
 
 <p>Для указания размера памяти удобно использовать MemoryUnit</p>
+
 ```cpp
 alloc::MemoryUnit<1, alloc::KiB>::byte(); // 1024
 alloc::MemoryUnit<2, alloc::MB>::kilobyte(); // 1000
