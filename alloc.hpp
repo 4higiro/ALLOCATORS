@@ -2,7 +2,7 @@
 #define CUSTOM_ALLOCATORS
 
 #ifndef DEFAULT_MEMORY_SIZE 
-#define DEFAULT_MEMORY_SIZE 4, MiB
+#define DEFAULT_MEMORY_SIZE 20, KiB
 #endif
 #ifndef META_MEMORY_SIZE 
 #define META_MEMORY_SIZE 1, KiB
@@ -49,6 +49,9 @@ namespace alloc
 		const size_t memory_size;
 		void* next_alloc;
 		size_t busy;
+
+		template <typename Type, typename MemoryType>
+		friend class AllocatorDynamic;
 	public:
 		MemoryLinear(void* p, size_t count) noexcept
 			: memory_size(count), next_alloc(p), busy(0) {}
@@ -96,6 +99,9 @@ namespace alloc
 		size_t stack_size;
 		void* next_alloc;
 		size_t busy;
+
+		template <typename Type, typename MemoryType>
+		friend class AllocatorDynamic;
 	public:
 		MemoryStack(void* p, size_t count)
 			: memory_size(count), stack_size(0), next_alloc(p), busy(0) 
@@ -167,6 +173,9 @@ namespace alloc
 		size_t next_alloc_index;
 		size_t busy;
 		const size_t h;
+
+		template <typename Type, typename MemoryType>
+		friend class AllocatorDynamic;
 	public:
 		MemoryPool(void* p, size_t count, size_t pool_h)
 			: memory_size(count), pool_size(1), next_alloc_index(0), busy(0), h(pool_h)
@@ -229,170 +238,199 @@ namespace alloc
 		}
 	};
 
-	template <typename Type,
-		size_t Count = default_memory_size,
-		typename MemoryType = MemoryLinear, loc_t Loc = HEAP
-	> class Allocator
+	template <typename Type, typename MemoryType>
+	class MemoryResource
 	{
 	private:
 		Type* memory;
-		MemoryType locations;
+		size_t bias;
+		MemoryType* resource;
+
+		friend class MemoryResource;
+	public:
+		const size_t memory_size;
+
+		MemoryResource(size_t n) 
+			: memory_size(n - 1)
+		{
+			memory = reinterpret_cast<Type*>(::operator new((n - 1) * sizeof(Type)));
+			bias = alignof(Type) - reinterpret_cast<long long>(memory) % alignof(Type);
+			bias = bias == alignof(Type) ? 0 : bias;
+			memory = reinterpret_cast<Type*>(reinterpret_cast<char*>(memory) + bias);
+			resource = new MemoryType(memory, n * sizeof(Type));
+		}
+
+		void* allocate(size_t n)
+		{
+			return resource->allocate(n);
+		}
+
+		void deallocate(void* p, size_t n)
+		{
+			resource->deallocate(p, n);
+		}
+
+		template<typename _Type, typename _MemoryType>
+		bool equal(const MemoryResource<_Type, _MemoryType>& other) const noexcept
+		{
+			return resource->equal(other.resource);
+		}
+
+		~MemoryResource()
+		{
+			memory = reinterpret_cast<Type*>(reinterpret_cast<char*>(memory) - bias);
+			delete[] memory;
+			delete resource;
+		}
+	};
+
+	template <typename Type>
+	class MemoryResource<Type, MemoryPool>
+	{
+	private:
+		Type* memory;
+		size_t bias;
+		MemoryPool* resource;
+
+		friend class MemoryResource;
+	public:
+		const size_t memory_size;
+		const size_t pool_h;
+
+		MemoryResource(size_t n, size_t h)
+			: memory_size(n - 1), pool_h(h)
+		{
+			memory = reinterpret_cast<Type*>(::operator new((n - 1) * sizeof(Type)));
+			bias = alignof(Type) - reinterpret_cast<long long>(memory) % alignof(Type);
+			bias = bias == alignof(Type) ? 0 : bias;
+			memory = reinterpret_cast<Type*>(reinterpret_cast<char*>(memory) + bias);
+			resource = new MemoryPool(memory, n * sizeof(Type), h);
+		}
+
+		void* allocate(size_t n)
+		{
+			return resource->allocate(n);
+		}
+
+		void deallocate(void* p, size_t n)
+		{
+			resource->deallocate(p, n);
+		}
+
+		template<typename _Type, typename _MemoryType>
+		bool equal(const MemoryResource<_Type, _MemoryType>& other) const noexcept
+		{
+			return resource->equal(other.resource);
+		}
+
+		~MemoryResource()
+		{
+			memory = reinterpret_cast<Type*>(reinterpret_cast<char*>(memory) - bias);
+			delete[] memory;
+			delete resource;
+		}
+	};
+
+	template <typename Type, typename MemoryType = MemoryLinear>
+	class Allocator
+	{
+	private:
+		MemoryResource<Type, MemoryType>* resource;
+		bool is_original;
+
+		friend class Allocator;
 	public:
 		using value_type = Type;
 
-		Allocator() : memory(reinterpret_cast<Type*>(::operator new(Count / sizeof(Type)))),
-			locations(memory, Count) {}
+		Allocator(size_t byte_count = default_memory_size)
+			: resource(new MemoryResource<Type, MemoryType>(byte_count)), is_original(true) {}
 
-		template<typename Rebind>
-		Allocator(const Allocator<Rebind, Count, MemoryType, Loc>& other) noexcept {}
+		template <typename Rebind>
+		Allocator(const Allocator<Rebind, MemoryType>& other)
+			: resource(new MemoryResource<Type, MemoryType>(other.resource->memory_size)),
+			is_original(true) {}
 
-		[[nodiscard]] Type* allocate(size_t n)
+		Allocator(const Allocator<Type, MemoryType>& other) noexcept
+			: resource(other.resource), is_original(false) {}
+
+		Type* allocate(size_t n)
 		{
-			return reinterpret_cast<Type*>(locations.allocate(n * sizeof(Type)));
+			return reinterpret_cast<Type*>(resource->allocate(n * sizeof(Type)));
 		}
 
 		void deallocate(Type* p, size_t n)
 		{
-			locations.deallocate(p, n * sizeof(Type));
+			resource->deallocate(p, n * sizeof(Type));
 		}
 
-		bool equal(const Allocator<Type, Count, MemoryType, Loc>& other) const noexcept
+		template <typename _Type, typename _MemoryType>
+		bool equal(const Allocator<_Type, _MemoryType>& other) const noexcept
 		{
-			return locations.equal(other.locations);
+			return resource->equal(other.resource);
 		}
 
 		~Allocator()
 		{
-			delete[] memory;
+			if (is_original)
+				delete resource;
 		}
 	};
 
-	template <typename Type, size_t Count, typename MemoryType>
-	class Allocator<Type, Count, MemoryType, STACK>
+	template <typename Type>
+	class Allocator<Type, MemoryPool>
 	{
 	private:
-		Type memory[Count];
-		MemoryType locations;
+		MemoryResource<Type, MemoryPool>* resource;
+		bool is_original;
+
+		friend class Allocator;
 	public:
 		using value_type = Type;
 
-		Allocator() : locations(memory, Count) {}
+		Allocator(size_t byte_count = default_memory_size, size_t pool_h = default_pool_h)
+			: resource(new MemoryResource<Type, MemoryPool>(byte_count, pool_h)), is_original(true) {}
 
-		template<typename Rebind>
-		Allocator(const Allocator<Rebind, Count, MemoryType, STACK>& other) noexcept {}
+		template <typename Rebind>
+		Allocator(const Allocator<Rebind, MemoryPool>& other)
+			: resource(new MemoryResource<Type, MemoryPool>(other.resource->memory_size,
+				other.resource->pool_h)), is_original(true) {}
 
-		[[nodiscard]] Type* allocate(size_t n)
+		Allocator(const Allocator<Type, MemoryPool>& other) noexcept
+			: resource(other.resource), is_original(false) {}
+
+		Type* allocate(size_t n)
 		{
-			return reinterpret_cast<Type*>(locations.allocate(n * sizeof(Type)));
+			return reinterpret_cast<Type*>(resource->allocate(n * sizeof(Type)));
 		}
 
 		void deallocate(Type* p, size_t n)
 		{
-			locations.deallocate(p, n * sizeof(Type));
+			resource->deallocate(p, n * sizeof(Type));
 		}
 
-		bool equal(const Allocator<Type, Count, MemoryType, STACK>& other) const noexcept
+		template <typename _Type, typename _MemoryType>
+		bool equal(const Allocator<_Type, _MemoryType>& other) const noexcept
 		{
-			return locations.equal(other.locations);
+			return resource->equal(other.resource);
+		}
+
+		~Allocator()
+		{
+			if (is_original)
+				delete resource;
 		}
 	};
 
-	template <typename Type, size_t Count, loc_t Loc>
-	class Allocator<Type, Count, MemoryPool, Loc>
+	template <typename Type_A, typename MemoryType_A, typename Type_B, typename MemoryType_B>
+	bool operator==(const Allocator<Type_A, MemoryType_A>& a, const Allocator<Type_B, MemoryType_B>& b)
 	{
-	private:
-		Type* memory;
-		MemoryPool locations;
-	public:
-		using value_type = Type;
-
-		Allocator(size_t pool_h = default_pool_h) 
-			: memory(reinterpret_cast<Type*>(::operator new(Count / sizeof(Type)))),
-			locations(memory, Count, pool_h) {}
-
-		template<typename Rebind>
-		Allocator(const Allocator<Rebind, Count, MemoryPool, Loc>& other) noexcept {}
-
-		[[nodiscard]] Type* allocate(size_t n)
-		{
-			return reinterpret_cast<Type*>(locations.allocate(n * sizeof(Type)));
-		}
-
-		void deallocate(Type* p, size_t n)
-		{
-			locations.deallocate(p, n * sizeof(Type));
-		}
-
-		bool equal(const Allocator<Type, Count, MemoryPool, Loc>& other) const noexcept
-		{
-			return locations.equal(other.locations);
-		}
-	};
-
-	template <typename Type, size_t Count>
-	class Allocator<Type, Count, MemoryPool, STACK>
-	{
-	private:
-		Type memory[Count];
-		MemoryPool locations;
-	public:
-		using value_type = Type;
-
-		Allocator(size_t pool_h = default_pool_h) : locations(memory, Count, pool_h) {}
-
-		template<typename Rebind>
-		Allocator(const Allocator<Rebind, Count, MemoryPool, STACK>& other) noexcept {}
-
-		[[nodiscard]] Type* allocate(size_t n)
-		{
-			return reinterpret_cast<Type*>(locations.allocate(n * sizeof(Type)));
-		}
-
-		void deallocate(Type* p, size_t n)
-		{
-			locations.deallocate(p, n * sizeof(Type));
-		}
-
-		bool equal(const Allocator<Type, Count, MemoryPool, STACK>& other) const noexcept
-		{
-			return locations.equal(other.locations);
-		}
-	};
-
-	template <
-		typename Type_A, typename Type_B,
-		size_t Count_A, size_t Count_B,
-		typename MemoryType_A, typename MemoryType_B,
-		loc_t Loc_A, loc_t Loc_B
-	> constexpr bool operator==(const Allocator<Type_A, Count_A, MemoryType_A, Loc_A>& Allocator_A,
-		const Allocator<Type_B, Count_B, MemoryType_B, Loc_B>& Allocator_B) noexcept
-	{
-		return false;
+		return a.equal(b);
 	}
 
-	template <
-		typename Type_A, typename Type_B,
-		size_t Count_A, size_t Count_B,
-		typename MemoryType_A, typename MemoryType_B,
-		loc_t Loc_A, loc_t Loc_B
-	> constexpr bool operator!=(const Allocator<Type_A, Count_A, MemoryType_A, Loc_A>& Allocator_A,
-		const Allocator<Type_B, Count_B, MemoryType_B, Loc_B>& Allocator_B) noexcept
+	template <typename Type_A, typename MemoryType_A, typename Type_B, typename MemoryType_B>
+	bool operator!=(const Allocator<Type_A, MemoryType_A>& a, const Allocator<Type_B, MemoryType_B>& b)
 	{
-		return true;
-	}
-
-	template < typename Type, typename MemoryType_A, size_t Count, typename MemoryType, loc_t Loc>
-	bool operator==(const Allocator<Type, Count, MemoryType, Loc>& Allocator_A,
-		const Allocator<Type, Count, MemoryType, Loc>& Allocator_B) noexcept
-	{
-		return Allocator_A.equal(Allocator_B);
-	}
-
-	template < typename Type, typename MemoryType_A, size_t Count, typename MemoryType, loc_t Loc>
-	bool operator!=(const Allocator<Type, Count, MemoryType,  Loc>& Allocator_A,
-		const Allocator<Type, Count, MemoryType, Loc>& Allocator_B) noexcept
-	{
-		return !Allocator_A.equal(Allocator_B);
+		return !a.equal(b);
 	}
 }
 
