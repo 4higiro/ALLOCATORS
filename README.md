@@ -43,3 +43,9 @@ alloc::MemoryUnit<1, alloc::KiB>::byte(); // 1024
 alloc::MemoryUnit<2, alloc::MB>::kilobyte(); // 1000
 ...
 ```
+
+<p>Пример создания контейнера с линейным аллокатором</p>
+
+```cpp
+std::vector<int, alloc::Allocator<int>> example;
+```
