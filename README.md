@@ -31,7 +31,14 @@ template <typename Type,
 	typename MemoryType = MemoryLinear, loc_t Loc = HEAP
 > class Allocator
 // Type       - тип аллоцируемых объектов
-// Count      - общий доступны размер памяти в байтах
+// Count      - общий доступный размер памяти в байтах
 // MemoryType - один из MemoryLinear, MemoryStack, MemoryPool (понятно что для какого аллокатора указать)
 // Loc        - может быть STACK или HEAP, т.е. память аллоцируется на стеке или в куче 
+```
+
+<p>Для указания размера памяти удобно использовать MemoryUnit</p>
+```cpp
+alloc::MemoryUnit<1, alloc::KiB>::byte(); // 1024
+alloc::MemoryUnit<2, alloc::MB>::kilobyte(); // 1000
+...
 ```
