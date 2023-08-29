@@ -21,15 +21,14 @@
 </ul>
 <hr>
 <h1>Результаты тестов:</h1>
-<img src="results.png">
+<img src="result.png">
 <p>Тесты, очевидно, вообще не объективны, т.к. замерялось реальное время исполнение кода, а оно разниться от случая к случаю и от железа к железу, но прирост производительности тем не менее очевиден.</p>
 <p>Объявление аллокатора имеет следующий вид</p>
 
 ```cpp
-template <typename Type, typename MemoryType = MemoryLinear>
+template <typename Type>
 class Allocator
 // Type - тип аллоцируемого объекта
-// MemoryType - тип управления памятью (один из MemoryLinear, MemoryStack, MemoryPool)
 ```
 
 <p>Для указания размера памяти удобно использовать MemoryUnit</p>
@@ -43,15 +42,37 @@ alloc::MemoryUnit<2, alloc::MB>::kilobyte(); // 1000
 <p>Объявление конструкторов</p>
 
 ```cpp
-// Общий
-Allocator(size_t byte_count = default_memory_size)
+// По умолчанию
+Allocator()
 
-// Специализация шаблона для MemoryPool
-Allocator(size_t byte_count = default_memory_size, size_t pool_h = default_pool_h)
+// С пользовательским ресурсом памяти
+Allocator(std::shared_ptr<alloc::MemoryResource> location)
 
-// byte_count - общий размер памяти в байтах, необходимый для аллоцирования объектов
-// pool_h - размер выделяемого блока памяти для Pool-аллокатора
+// location - ресурс памяти, к которому будет обращаться аллокатор
+// Если создать аллокатор с помощью конструктора по умолчанию, ресурсом памяти будет системная куча (т.е. это будет std::allocator)
 ```
+
+<p>Создание ресурса памяти</p>
+
+```cpp
+// Конструктор
+MemoryResource(manager_t mm_type = HEAP,
+			size_t align = alignof(std::max_align_t), size_t t_size = sizeof(std::max_align_t),
+			bool copy_assignment = false, size_t n = default_memory_size, size_t h = default_pool_h) noexcept
+
+// mm_type         - тип управляющей структуры (HEAP, LINEAR, STACK или POOL)
+// align           - выравнивание типа (предполагается что на ресурсе будут аллоцироваться одинаковые типы)
+// t_size          - размер типа (служебная информация для аллокатора)
+// copy_assignment - флаг, означающий возможность скопированного аллокатора использовать тот же ресурс
+// n               - размер доступной ресурсу памяти
+// h               - шаг (только для alloc::POOL)
+
+// Создание
+auto resource = alloc::make_resource(alloc::POOL, alignof(int), sizeof(int),
+     false, alloc::default_memory_size, sizeof(int));
+```
+
+
 
 <p>Выделение памяти по умолчанию можно задать макросами (обязательно перед включением заголовка)</p>
 
@@ -64,5 +85,7 @@ Allocator(size_t byte_count = default_memory_size, size_t pool_h = default_pool_
 <p>Пример создания контейнера с линейным аллокатором</p>
 
 ```cpp
-std::vector<int, alloc::Allocator<int>> example;
+auto resource = alloc::make_resource(alloc::LINEAR);
+alloc::Allocator<int> allocator(resource);
+alloc::vector<int> example(allocator);
 ```
