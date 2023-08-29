@@ -49,7 +49,8 @@ Allocator()
 Allocator(std::shared_ptr<alloc::MemoryResource> location)
 
 // location - ресурс памяти, к которому будет обращаться аллокатор
-// Если создать аллокатор с помощью конструктора по умолчанию, ресурсом памяти будет системная куча (т.е. это будет std::allocator)
+// Если создать аллокатор с помощью конструктора по умолчанию, ресурсом
+// памяти будет системная куча (т.е. это будет std::allocator)
 ```
 
 <p>Создание ресурса памяти</p>
@@ -57,8 +58,8 @@ Allocator(std::shared_ptr<alloc::MemoryResource> location)
 ```cpp
 // Конструктор
 MemoryResource(manager_t mm_type = HEAP,
-			size_t align = alignof(std::max_align_t), size_t t_size = sizeof(std::max_align_t),
-			bool copy_assignment = false, size_t n = default_memory_size, size_t h = default_pool_h) noexcept
+	size_t align = alignof(std::max_align_t), size_t t_size = sizeof(std::max_align_t),
+	bool copy_assignment = false, size_t n = default_memory_size, size_t h = default_pool_h) noexcept
 
 // mm_type         - тип управляющей структуры (HEAP, LINEAR, STACK или POOL)
 // align           - выравнивание типа (предполагается что на ресурсе будут аллоцироваться одинаковые типы)
