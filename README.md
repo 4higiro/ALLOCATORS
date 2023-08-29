@@ -79,7 +79,6 @@ auto resource = alloc::make_resource(alloc::POOL, alignof(int), sizeof(int),
 
 ```cpp
 #define DEFAULT_MEMORY_SIZE 20, KiB // Общий размер памяти, предназначенной для аллоцирования объектов
-#define META_MEMORY_SIZE 1, KiB // Размер памяти для хранения узлов управляющих структур
 #include "alloc.hpp"
 ```
 
